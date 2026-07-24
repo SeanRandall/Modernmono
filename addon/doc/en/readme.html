@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modern Mono help</title>
+<style>
+body { font-family: sans-serif; line-height: 1.5; max-width: 70rem; margin: 2rem auto; padding: 0 1rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #777; padding: .4rem; text-align: left; vertical-align: top; }
+code { font-family: monospace; }
+</style>
+</head>
+<body>
+<main>
+<h1>Modern Mono</h1>
+<p>Modern Mono is a pure-Python reconstruction of the 22 kHz and 11 kHz Monolog speech synthesizers.</p>
+<p>This build also includes optional American-English entries converted from the community IBMTTS Dictionaries project and CMUdict. They are disabled by default, preserving the original Monolog dictionary and pronunciation rules.</p>
+<p>CMUdict is maintained by Carnegie Mellon University and permits unrestricted redistribution with attribution. See the bundled <a href="cmudict-license.txt">CMUdict licence</a>.</p>
+
+<h2>Voice settings</h2>
+<ul>
+<li><strong>Voice:</strong> chooses the cleaner 22 kHz/16-bit voice or the original lower-fidelity 11 kHz/8-bit voice.</li>
+<li><strong>Rate boost:</strong> extends native Monolog timing. Its default mode preserves pitch but progressively omits whole units above rate 75.</li>
+<li><strong>Use legacy overlap rate boost:</strong> restores the faster boost used by builds through 0.5.6: native speed up to 13 followed by 20 ms overlap/add compression. It only takes effect when rate boost is enabled. Turn it off to use the newer pitch-stable whole-unit mode.</li>
+<li><strong>Excitation:</strong> controls sentence-level pitch movement. 50 preserves the native contours, 0 flattens them and 100 doubles their excursion.</li>
+<li><strong>Enable embedded setting commands:</strong> permits backtick pitch, speed, volume and delay commands.</li>
+<li><strong>Enable ASCII normalization:</strong> converts smart punctuation, Unicode dashes and accented Latin letters before pronunciation. It is enabled by default.</li>
+<li><strong>Use community American English dictionary:</strong> enables converted pronunciation corrections, abbreviation expansions and CMUdict fallback pronunciations. Leave this disabled for the most authentic original Monolog behaviour. Native Monolog entries retain priority.</li>
+</ul>
+
+<h2>Commands in NVDA text</h2>
+<p>Enable embedded setting commands before using these forms. The command remains active until another command changes the same setting.</p>
+<ul>
+<li><code>`p8</code> sets pitch to 8; <code>`p5</code> returns it to 5.</li>
+<li><code>`s8</code> sets speed to 8; <code>`s5</code> returns it to 5.</li>
+<li><code>`v2</code> sets a quiet volume; <code>`v5</code> returns it to the original level.</li>
+<li><code>`d2</code> inserts a delay of two original timing units.</li>
+</ul>
+<p>Example: “This is normal <code>`p8</code> and this is higher <code>`p5</code> and this is normal again.”</p>
+
+<h2>Engine user dictionary</h2>
+<p>Choose <strong>Modern Mono user dictionary</strong> from NVDA Preferences → Speech dictionaries. Enter a spelling or phrase and raw phonetics, then use <strong>Preview</strong> to hear the phonetics directly. <strong>Save or update</strong> applies the entry immediately; <strong>Delete</strong> removes it.</p>
+<p>The entries are stored in <code>modernmono-user-dictionary.tsv</code> in NVDA’s user configuration directory beside <code>nvda.ini</code>.</p>
+<p>Each non-comment line contains spelling, one tab character, and raw Monolog phonetics. Entries may contain spaces and matching is case-insensitive. Longer entries take priority.</p>
+<pre><code># spelling&lt;TAB&gt;phonetics
+hello	hEHl'OW
+hello world	hEHl'OW|w'ERLXd</code></pre>
+
+<h2>Phonetic controls</h2>
+<ul>
+<li><code>'</code> marks primary stress: <code>hEHl'OW</code>, “hello”.</li>
+<li><code>"</code> marks secondary stress.</li>
+<li><code>/</code> makes a pitch rise; <code>\</code> makes a pitch fall.</li>
+<li><code>[</code> makes a small pitch rise; <code>]</code> makes a small pitch fall.</li>
+<li><code>-</code> makes a falling movement when it is not followed by a number.</li>
+<li><code>|</code> separates words.</li>
+<li><code>^</code> marks a phonetic boundary.</li>
+<li><code>P0</code> through <code>P9</code> set pitch inside raw phonetics.</li>
+<li><code>S0</code> through <code>S9</code> set speed.</li>
+<li><code>V0</code> through <code>V9</code> set volume.</li>
+<li><code>D</code> followed by a number inserts a delay.</li>
+<li>A bare number supplies a duration or intonation target for the preceding phoneme chain.</li>
+</ul>
+
+<h2>Vowels and vowel combinations</h2>
+<table>
+<thead><tr><th scope="col">Code</th><th scope="col">Examples</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>IY</code></th><td>“see”, “machine”</td></tr>
+<tr><th scope="row"><code>IH</code></th><td>“sit”, “middle”</td></tr>
+<tr><th scope="row"><code>EH</code></th><td>“bed”, “many”</td></tr>
+<tr><th scope="row"><code>AE</code></th><td>“cat”, “carry”</td></tr>
+<tr><th scope="row"><code>AH</code></th><td>“cup”, “love”</td></tr>
+<tr><th scope="row"><code>AX</code></th><td>The first vowel in “about”; the final vowel in “sofa”</td></tr>
+<tr><th scope="row"><code>AA</code></th><td>“father”, “calm”</td></tr>
+<tr><th scope="row"><code>UH</code></th><td>“book”, “could”</td></tr>
+<tr><th scope="row"><code>UW</code></th><td>“food”, “blue”</td></tr>
+<tr><th scope="row"><code>OW</code></th><td>“go”, “home”</td></tr>
+<tr><th scope="row"><code>ER</code></th><td>“bird”, “turn”</td></tr>
+<tr><th scope="row"><code>AY</code></th><td>“my”, “time”</td></tr>
+<tr><th scope="row"><code>EY</code></th><td>“day”, “made”</td></tr>
+<tr><th scope="row"><code>OY</code></th><td>“boy”, “voice”</td></tr>
+<tr><th scope="row"><code>AW</code></th><td>“now”, “house”</td></tr>
+<tr><th scope="row"><code>IX</code></th><td>The final vowel in “wanted”; a reduced form of <code>IH</code></td></tr>
+</tbody>
+</table>
+
+<h2>Syllabic and continuous consonants</h2>
+<table>
+<thead><tr><th scope="col">Code</th><th scope="col">Examples</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>LX</code></th><td>The final sound in “bottle” and “table”</td></tr>
+<tr><th scope="row"><code>EM</code></th><td>The final sound in “bottom” and “rhythm”</td></tr>
+<tr><th scope="row"><code>EN</code></th><td>The final sound in “button” and “sudden”</td></tr>
+<tr><th scope="row"><code>l</code></th><td>“lip”, “alive”</td></tr>
+<tr><th scope="row"><code>m</code></th><td>“map”, “summer”</td></tr>
+<tr><th scope="row"><code>n</code></th><td>“no”, “dinner”</td></tr>
+<tr><th scope="row"><code>NG</code></th><td>“sing”, “finger”</td></tr>
+<tr><th scope="row"><code>y</code></th><td>“yes”, “use”</td></tr>
+<tr><th scope="row"><code>r</code></th><td>“red”, “carry”</td></tr>
+<tr><th scope="row"><code>w</code></th><td>“wet”, “away”</td></tr>
+</tbody>
+</table>
+
+<h2>Stops and friction sounds</h2>
+<table>
+<thead><tr><th scope="col">Code</th><th scope="col">Examples</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>b</code></th><td>“bat”, “ribbon”</td></tr>
+<tr><th scope="row"><code>d</code></th><td>“dog”, “ready”</td></tr>
+<tr><th scope="row"><code>g</code></th><td>“go”, “bigger”</td></tr>
+<tr><th scope="row"><code>v</code></th><td>“van”, “river”</td></tr>
+<tr><th scope="row"><code>DH</code></th><td>“this”, “other”</td></tr>
+<tr><th scope="row"><code>z</code></th><td>“zoo”, “easy”</td></tr>
+<tr><th scope="row"><code>ZH</code></th><td>The middle sound in “measure” and “vision”</td></tr>
+<tr><th scope="row"><code>f</code></th><td>“fan”, “coffee”</td></tr>
+<tr><th scope="row"><code>TH</code></th><td>“thin”, “author”</td></tr>
+<tr><th scope="row"><code>s</code></th><td>“see”, “city”</td></tr>
+<tr><th scope="row"><code>SH</code></th><td>“ship”, “nation”</td></tr>
+<tr><th scope="row"><code>h</code></th><td>“hat”, “ahead”</td></tr>
+<tr><th scope="row"><code>p</code></th><td>“pin”, “happy”</td></tr>
+<tr><th scope="row"><code>t</code></th><td>“top”, “attack”</td></tr>
+<tr><th scope="row"><code>k</code></th><td>“cat”, “back”</td></tr>
+<tr><th scope="row"><code>PX</code></th><td>The <em>p</em> sound selected after <em>s</em>, as in “spin”</td></tr>
+<tr><th scope="row"><code>TX</code></th><td>The <em>t</em> sound selected after <em>s</em>, as in “stay”</td></tr>
+<tr><th scope="row"><code>KX</code></th><td>The <em>k</em> sound selected in combinations such as “skill”</td></tr>
+<tr><th scope="row"><code>DX</code></th><td>The middle consonant in “butter”, “ladder” and “city”</td></tr>
+</tbody>
+</table>
+
+<h2>Capitalization and syntax</h2>
+<p>Phoneme codes are case-sensitive. Enter multi-character codes exactly as shown. Raw phonetic strings use <code>|</code> between words.</p>
+
+<h2>Original data</h2>
+<p>The add-on contains the original 22 kHz and 11 kHz voices and default dictionary for local testing. Redistribution rights must be resolved before public publication.</p>
+</main>
+</body>
+</html>

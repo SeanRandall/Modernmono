@@ -1,0 +1,1 @@
+This synthesizer is a 16-bit program. It will not run under new operating systems. If your computer runs a 64-bit OS, you will require a virtual machine of an earlier system to run the software.

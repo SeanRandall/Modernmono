@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.wav
+*.log
+*.zip
+
+# Reverse-engineering scratch outputs and downloaded source extracts.
+data extracts/
+analysis/corpus/
+analysis/resources/
+analysis/voice/
+
+# Keep only the current packaged add-on under version control.
+dist/*
+!dist/modernMono-0.6.8.nvda-addon
