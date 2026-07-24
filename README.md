@@ -82,7 +82,8 @@ resources embedded in the selected voice. Tokens outside that rule system
 See [`analysis/PYTHON_NVDA_PLAN.md`](analysis/PYTHON_NVDA_PLAN.md).
 
 The scheduled mode ports unit resizing, pitch-period/repeat scheduling, tail
-crossfades, and voiced-boundary interpolation. Phonetic stress/intonation
-contours still need to be attached to individual unit events.
+crossfades, voiced-boundary interpolation, and per-unit stress and intonation
+contours. Exact interactions between overlapping stress, sentence intonation,
+speed, pitch, and the optional excitation scaling are still being refined.
 
 See [`analysis/ENGINE_MAP.md`](analysis/ENGINE_MAP.md) for the recovered model.
