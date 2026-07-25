@@ -10,7 +10,7 @@ SOURCE = ROOT / "data extracts" / "cmudict.dict"
 OUTPUT = ROOT / "addon" / "data" / "CMUdict.tsv"
 
 PHONEMES = {
-    "AA": "AA", "AE": "AE", "AO": "OW", "AW": "AW", "AY": "AY",
+    "AA": "AA", "AE": "AE", "AO": "AA", "AW": "AW", "AY": "AY",
     "EH": "EH", "ER": "ER", "EY": "EY", "IH": "IH", "IY": "IY",
     "OW": "OW", "OY": "OY", "UH": "UH", "UW": "UW",
     "B": "b", "CH": "tSH", "D": "d", "DH": "DH", "F": "f",
@@ -27,7 +27,7 @@ def convert_symbol(symbol: str) -> str:
         raise ValueError(symbol)
     name, stress = match.groups()
     if name == "AH":
-        phoneme = "AX" if stress == "0" else "AH"
+        phoneme = "IX" if stress == "0" else "AH"
     else:
         phoneme = PHONEMES[name]
     prefix = "'" if stress == "1" else '"' if stress == "2" else ""
@@ -39,7 +39,13 @@ def convert_pronunciation(symbols: list[str]) -> str:
     for index, symbol in enumerate(symbols):
         name = re.sub(r"[012]$", "", symbol)
         following = re.sub(r"[012]$", "", symbols[index + 1]) if index + 1 < len(symbols) else ""
-        if name == "L" and (not following or following not in {
+        if name == "AO" and following == "R":
+            # Monolog has no dedicated caught/thought vowel. AA is the best
+            # general match, but its rhotic sequence is much too open
+            # ("short" becomes "shart"). Preserve Monolog's OW+r sequence.
+            stress = symbol[-1] if symbol[-1:] in "012" else ""
+            result.append(("'" if stress == "1" else '"' if stress == "2" else "") + "OW")
+        elif name == "L" and (not following or following not in {
             "AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY",
             "IH", "IY", "OW", "OY", "UH", "UW",
         }):

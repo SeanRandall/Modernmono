@@ -23,7 +23,8 @@ from speech.commands import (
 	VolumeCommand,
 )
 import synthDriverHandler
-from autoSettingsUtils.driverSetting import BooleanDriverSetting, NumericDriverSetting
+from autoSettingsUtils.driverSetting import BooleanDriverSetting, DriverSetting, NumericDriverSetting
+from autoSettingsUtils.utils import StringParameterInfo
 
 from ._modernmono.engine import MonologEngine
 from ._modernmono.phonetics import parse as parsePhonetics
@@ -55,17 +56,15 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	supportedSettings = (
 		synthDriverHandler.SynthDriver.VoiceSetting(),
 		synthDriverHandler.SynthDriver.RateSetting(),
-		synthDriverHandler.SynthDriver.RateBoostSetting(),
+		DriverSetting(
+			"rateBoostMode", "Rate &boost mode", defaultVal="off",
+			availableInSettingsRing=True,
+		),
 		synthDriverHandler.SynthDriver.PitchSetting(),
 		NumericDriverSetting(
 			"excitation", "E&xcitation", defaultVal=50, availableInSettingsRing=True
 		),
 		synthDriverHandler.SynthDriver.VolumeSetting(),
-		BooleanDriverSetting(
-			"legacyRateBoost",
-			"Use &legacy overlap rate boost",
-			defaultVal=False,
-		),
 		BooleanDriverSetting(
 			"embeddedCommands",
 			"Enable embedded &setting commands",
@@ -117,8 +116,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self._players = {(22050, 16): self._player}
 		self._activePlayer = self._player
 		self._rate = 50
-		self._rateBoost = False
-		self._legacyRateBoost = False
+		self._rateBoostMode = "off"
 		self._pitch = 50
 		self._excitation = 50
 		self._volume = 100
@@ -207,17 +205,41 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _set_rate(self, value):
 		self._rate = max(0, min(100, int(value)))
 
-	def _get_rateBoost(self):
-		return self._rateBoost
+	_rateBoostModes = {
+		"off": StringParameterInfo("off", "Off (original Monolog)"),
+		"cleanReading": StringParameterInfo(
+			"cleanReading", "Clean reading (S13 + shorter pauses)"
+		),
+		"wsolaCrisp": StringParameterInfo(
+			"wsolaCrisp", "WSOLA crisp (short windows)"
+		),
+		"wsolaBalanced": StringParameterInfo(
+			"wsolaBalanced", "WSOLA balanced"
+		),
+		"wsolaSmooth": StringParameterInfo(
+			"wsolaSmooth", "WSOLA smooth (long windows)"
+		),
+		"wsolaFast": StringParameterInfo(
+			"wsolaFast", "WSOLA maximum speed"
+		),
+		"wsolaReading": StringParameterInfo(
+			"wsolaReading", "WSOLA balanced + shorter pauses"
+		),
+		"wholeUnits": StringParameterInfo("wholeUnits", "Previous whole-unit boost"),
+		"legacyOverlap": StringParameterInfo("legacyOverlap", "Legacy overlap/add boost"),
+	}
 
-	def _set_rateBoost(self, value):
-		self._rateBoost = bool(value)
+	# NVDA forms this property with str.capitalize(), which lowercases every
+	# character after the first: rateBoostMode -> availableRateboostmodes.
+	def _get_availableRateboostmodes(self):
+		return self._rateBoostModes
 
-	def _get_legacyRateBoost(self):
-		return self._legacyRateBoost
+	def _get_rateBoostMode(self):
+		return self._rateBoostMode
 
-	def _set_legacyRateBoost(self, value):
-		self._legacyRateBoost = bool(value)
+	def _set_rateBoostMode(self, value):
+		if value in self._rateBoostModes:
+			self._rateBoostMode = value
 
 	def _get_pitch(self):
 		return self._pitch
@@ -259,20 +281,51 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		with self._stateLock:
 			return generation == self._generation
 
-	def _monologRate(self, value: int) -> int:
+	def _rateProfile(self, value: int) -> tuple[int, int]:
+		"""Return native scheduling speed and protected-unit compression percent."""
 		value = max(0, min(100, value))
-		if not self._rateBoost:
-			return round(value * 9 / 100)
-		# Keep whole-unit dropping out of the commonly used first 75%. The
-		# final quarter extends S18 to S24 at a deliberately gentler slope.
+		if self._rateBoostMode == "off":
+			return round(value * 9 / 100), 0
+		if self._rateBoostMode in {
+			"cleanReading", "wsolaCrisp", "wsolaBalanced", "wsolaSmooth",
+			"wsolaFast", "wsolaReading",
+		}:
+			return round(value * 13 / 100), 0
+		if self._rateBoostMode == "legacyOverlap":
+			return round(value * 13 / 100), 0
 		if value <= 75:
-			return round(value * 18 / 75)
-		return 18 + round((value - 75) * 6 / 25)
+			return round(value * 18 / 75), 0
+		return 18 + round((value - 75) * 6 / 25), 0
 
 	def _renderRate(self, value: int) -> int:
-		if self._rateBoost and self._legacyRateBoost:
-			return max(0, min(13, round(value * 13 / 100)))
-		return self._monologRate(value)
+		return self._rateProfile(value)[0]
+
+	def _pauseCompression(self, value: int) -> int:
+		if self._rateBoostMode in {"cleanReading", "wsolaReading"}:
+			return round(max(0, min(100, value)) * 75 / 100)
+		if self._rateBoostMode in {
+			"wsolaCrisp", "wsolaBalanced", "wsolaSmooth", "wsolaFast",
+		}:
+			return round(max(0, min(100, value)) * 50 / 100)
+		return 0
+
+	def _wsolaProfile(self, value: int):
+		"""Return factor, window ms, overlap fraction and search ms."""
+		profiles = {
+			"wsolaCrisp": (0.65, 24, 0.35, 6),
+			"wsolaBalanced": (1.0, 36, 0.50, 10),
+			"wsolaSmooth": (1.0, 52, 0.65, 14),
+			"wsolaFast": (1.5, 32, 0.50, 12),
+			"wsolaReading": (1.0, 40, 0.55, 12),
+		}
+		profile = profiles.get(self._rateBoostMode)
+		if profile is None:
+			return None
+		maximumExtra, windowMs, overlap, searchMs = profile
+		# Leave the lower 40% entirely native. Above it, progressively add the
+		# whole-utterance compressor while the engine itself remains within S13.
+		amount = max(0, min(60, value - 40)) / 60.0
+		return 1.0 + maximumExtra * amount, windowMs, overlap, searchMs
 
 	def _playerForRate(self, value: int):
 		sampleRate = self._engine.manifest["sample_rate"]
@@ -316,14 +369,22 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			return True
 		# V5 is the original nominal level. Lower values attenuate in the
 		# renderer; NVDA's stream volume supplies the full 0-100 range.
+		renderRate, unitCompression = self._rateProfile(rate)
 		audio = self._engine.render_phonetics(
 			f"V{min(5, self._monologSetting(volume))}{phonetics}",
 			pitch=self._monologSetting(pitch),
-			speed=self._renderRate(rate),
+			speed=renderRate,
 			excitation=self._excitation,
+			unit_compression=unitCompression,
+			pause_compression=self._pauseCompression(rate),
 		)
 		pcm = audio.pcm
-		if self._rateBoost and self._legacyRateBoost and rate > 0:
+		wsola = self._wsolaProfile(rate)
+		if wsola is not None:
+			pcm = self._compressPcmWsola(
+				pcm, *wsola, audio.sample_width, audio.sample_rate
+			)
+		if self._rateBoostMode == "legacyOverlap" and rate > 0:
 			pcm = self._compressPcm(
 				pcm, 1.0 + 1.5 * rate / 100.0, audio.sample_width, audio.sample_rate
 			)
@@ -368,16 +429,77 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			return struct.pack(f"<{len(result)}h", *result)
 		return bytes(max(0, min(255, value + 0x80)) for value in result)
 
+	@staticmethod
+	def _compressPcmWsola(pcm: bytes, factor: float, windowMs: int,
+			overlapFraction: float, searchMs: int, sampleWidth: int = 2,
+			sampleRate: int = 22050) -> bytes:
+		"""Correlation-aligned whole-utterance overlap/add compression."""
+		if factor <= 1.0:
+			return pcm
+		if sampleWidth == 2:
+			samples = list(struct.unpack(f"<{len(pcm) // 2}h", pcm))
+		else:
+			samples = [value - 0x80 for value in pcm]
+		window = max(16, round(sampleRate * windowMs / 1000))
+		overlap = max(4, min(window - 4, round(window * overlapFraction)))
+		synthesisHop = window - overlap
+		analysisHop = max(synthesisHop + 1, round(synthesisHop * factor))
+		search = max(2, round(sampleRate * searchMs / 1000))
+		if len(samples) < window * 2:
+			return pcm
+
+		result = samples[:window]
+		source = 0
+		destination = synthesisHop
+		while True:
+			expected = source + analysisHop
+			low = max(source + 1, expected - search)
+			high = min(len(samples) - window, expected + search)
+			if low > high:
+				break
+			bestSource = low
+			bestError = None
+			# Sampling every fourth point is sufficient to locate waveform phase
+			# and keeps synthesis responsive inside NVDA.
+			for candidate in range(low, high + 1, 4):
+				error = 0
+				for index in range(0, overlap, 8):
+					difference = result[destination + index] - samples[candidate + index]
+					error += difference * difference
+				if bestError is None or error < bestError:
+					bestError = error
+					bestSource = candidate
+			frame = samples[bestSource:bestSource + window]
+			for index in range(overlap):
+				left = overlap - index
+				result[destination + index] = (
+					result[destination + index] * left + frame[index] * index
+				) // overlap
+			result.extend(frame[overlap:])
+			source = bestSource
+			destination += synthesisHop
+		if sampleWidth == 2:
+			return struct.pack(f"<{len(result)}h", *result)
+		return bytes(max(0, min(255, value + 0x80)) for value in result)
+
 	def previewPhonetics(self, phonetics: str) -> None:
 		parsePhonetics(phonetics)
+		renderRate, unitCompression = self._rateProfile(self._rate)
 		audio = self._engine.render_phonetics(
 			phonetics,
 			pitch=self._monologSetting(self._pitch),
-			speed=self._renderRate(self._rate),
+			speed=renderRate,
 			excitation=self._excitation,
+			unit_compression=unitCompression,
+			pause_compression=self._pauseCompression(self._rate),
 		)
 		pcm = audio.pcm
-		if self._rateBoost and self._legacyRateBoost and self._rate > 0:
+		wsola = self._wsolaProfile(self._rate)
+		if wsola is not None:
+			pcm = self._compressPcmWsola(
+				pcm, *wsola, audio.sample_width, audio.sample_rate
+			)
+		if self._rateBoostMode == "legacyOverlap" and self._rate > 0:
 			pcm = self._compressPcm(
 				pcm, 1.0 + 1.5 * self._rate / 100.0,
 				audio.sample_width, audio.sample_rate,

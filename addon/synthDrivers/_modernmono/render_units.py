@@ -236,6 +236,69 @@ def _resize_unit(samples: list[int], byte_delta: int, sample_width: int) -> list
     return result
 
 
+def _compress_unit_middle(samples: list[int], percent: int, protected: int) -> list[int]:
+    """Shorten sustained material while retaining both transition boundaries."""
+    if percent <= 0 or len(samples) <= protected * 2 + 2:
+        return samples
+    removable = len(samples) - protected * 2
+    remove = min(removable - 1, removable * percent // 100)
+    if remove <= 0:
+        return samples
+    # Overlap the two sides of the cut instead of concatenating them and then
+    # rewriting the left side. The old arrangement played the beginning of the
+    # retained right side twice and produced a click as soon as compression
+    # became non-zero.
+    fade = min(protected, remove)
+    left_end = (len(samples) - remove + fade) // 2
+    left_start = left_end - fade
+    right_start = left_end + remove - fade
+    blend = []
+    for index in range(fade):
+        fraction = (index + 1) * 0x7FFF // (fade + 1)
+        blend.append(_interpolate(
+            fraction, samples[left_start + index], samples[right_start + index]
+        ))
+    return samples[:left_start] + blend + samples[right_start + fade:]
+
+
+def _compress_unit_correlated(samples: list[int], percent: int, protected: int) -> list[int]:
+    """Remove duration at the most similar pair of nearby waveform phases."""
+    if percent <= 0 or len(samples) <= protected * 2 + 4:
+        return samples
+    removable = len(samples) - protected * 2
+    target_gap = min(removable - 2, removable * percent // 100)
+    if target_gap <= 0:
+        return samples
+
+    overlap = min(max(4, protected), (len(samples) - protected * 2) // 3)
+    ideal_left = (len(samples) - target_gap - overlap) // 2
+    gap_radius = min(12, max(1, target_gap // 10))
+    best = None
+    left = max(protected, ideal_left)
+    for gap in range(max(1, target_gap - gap_radius), target_gap + gap_radius + 1):
+        right = left + gap
+        if right + overlap > len(samples) - protected:
+            continue
+        error = 0
+        for index in range(overlap):
+            difference = samples[left + index] - samples[right + index]
+            error += difference * difference
+        candidate = (error, abs(gap - target_gap), left, right)
+        if best is None or candidate < best:
+            best = candidate
+    if best is None:
+        return _compress_unit_middle(samples, percent, protected)
+
+    left, right = best[2], best[3]
+    blend = []
+    for index in range(overlap):
+        fraction = (index + 1) * 0x7FFF // (overlap + 1)
+        blend.append(_interpolate(
+            fraction, samples[left + index], samples[right + index]
+        ))
+    return samples[:left] + blend + samples[right + overlap:]
+
+
 def _extended_period(length: int, control: int) -> int:
     """Continue FB_NGN's speed curve past S9 without crossing zero.
 
@@ -259,6 +322,9 @@ def _scheduled_frames(
     speed: int = 5,
     pitch: int = 5,
     excitation: int = 50,
+    unit_compression: int = 0,
+    compression_method: str = "centre",
+    pause_compression: int = 0,
 ) -> bytes:
     sample_width = manifest["bits_per_sample"] // 8
     signed = sample_width == 2
@@ -283,6 +349,7 @@ def _scheduled_frames(
             repeats = (manifest["sample_rate"] // period) * event.delay_units
             bytes_per_repeat = period // (2 if sample_width == 2 else 4)
             silence_samples = repeats * bytes_per_repeat // sample_width
+            silence_samples = silence_samples * (100 - pause_compression) // 100
             output.extend([0 if signed else 0x80] * silence_samples)
             continue
         if event.unit_index is None:
@@ -313,22 +380,35 @@ def _scheduled_frames(
         adjusted_bytes = min(0x400, original_bytes + delta)
         delta = adjusted_bytes - original_bytes
         adjusted = _resize_unit(samples, delta, sample_width)
-        adjusted_bytes = len(adjusted) * sample_width
+        scheduling_bytes = len(adjusted) * sample_width
+        # The recovered scheduler never repeats 0x2100 units; these carry the
+        # brief transitions/transients that are most important for clarity.
+        # Their protected edges are retained and their centres are shortened
+        # only three-fifths as much as sustained/repeatable material.
+        compression = (
+            unit_compression if unit["flags"] & 0x2100 == 0
+            else unit_compression * 3 // 5
+        )
+        compressor = (
+            _compress_unit_correlated
+            if compression_method == "correlation" else _compress_unit_middle
+        )
+        adjusted = compressor(adjusted, compression, fade_samples)
 
         pitch_period = _extended_period(original_bytes, internal_period_control)
         source_phase += pitch_period
-        output_phase += adjusted_bytes
+        output_phase += scheduling_bytes
         repeats = 1
-        lower = source_phase - adjusted_bytes // 2
-        upper = source_phase + adjusted_bytes // 2
+        lower = source_phase - scheduling_bytes // 2
+        upper = source_phase + scheduling_bytes // 2
         if unit["flags"] & 0x2100 == 0:
             for _ in range(3):
                 if output_phase >= lower:
                     break
-                output_phase += adjusted_bytes
+                output_phase += scheduling_bytes
                 repeats += 1
             if output_phase > upper:
-                output_phase -= adjusted_bytes
+                output_phase -= scheduling_bytes
                 repeats -= 1
         if output_phase > 20000:
             output_phase -= 10000

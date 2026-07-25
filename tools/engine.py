@@ -680,6 +680,9 @@ class MonologEngine:
         pitch: int = 5,
         speed: int = 5,
         excitation: int = 50,
+        unit_compression: int = 0,
+        compression_method: str = "centre",
+        pause_compression: int = 0,
     ) -> RenderedAudio:
         events = scheduled_events(self.manifest, phonetics)
         pcm = _scheduled_frames(
@@ -689,6 +692,9 @@ class MonologEngine:
             pitch=max(0, min(9, pitch)),
             speed=max(0, min(24, speed)),
             excitation=max(0, min(100, excitation)),
+            unit_compression=max(0, min(50, unit_compression)),
+            compression_method=compression_method,
+            pause_compression=max(0, min(90, pause_compression)),
         )
         return RenderedAudio(pcm, self.manifest["sample_rate"], self.manifest["bits_per_sample"] // 8)
 

@@ -7,7 +7,10 @@ from tools.dictionary_extract import parse_dictionary
 from tools.ne_extract import parse_ne
 from tools.phonetics import parse
 from tools.voice_inspect import inspect_voice, transition_units
-from tools.render_units import _resize_unit, render, scheduled_events, selected_units
+from tools.render_units import (
+    _compress_unit_correlated, _compress_unit_middle, _resize_unit,
+    render, scheduled_events, selected_units,
+)
 from tools.engine import MonologEngine, UnknownWordError
 from tools.text_to_phonetics import RulePronouncer
 from tools.console_speak import text_with_inline_commands
@@ -121,6 +124,50 @@ class VoiceTests(unittest.TestCase):
 
     def test_unit_resize(self):
         self.assertEqual(_resize_unit([1, 2, 3], 2, 2), [1, 2, 3, 3])
+
+    def test_middle_compression_preserves_unit_boundaries(self):
+        samples = list(range(200))
+        compressed = _compress_unit_middle(samples, 50, 15)
+        self.assertLess(len(compressed), len(samples))
+        self.assertEqual(samples[:15], compressed[:15])
+        self.assertEqual(samples[-15:], compressed[-15:])
+        self.assertEqual(sorted(compressed), compressed)
+
+        # The first non-zero setting must not duplicate/jump backwards at its
+        # splice, which was the audible failure at Clear 56 / Maximum 45.
+        onset = _compress_unit_middle(samples, 1, 15)
+        self.assertEqual(sorted(onset), onset)
+        self.assertEqual(len(samples) - 1, len(onset))
+
+    def test_protected_rate_compression_shortens_speech(self):
+        engine = MonologEngine(ROOT / "monologue16" / "FB_22K16.DLL", ROOT / "monologue16" / "FB_DEFLT.DIC")
+        phonetics = engine.text_to_phonetics("files reports awards and menus")
+        ordinary = engine.render_phonetics(phonetics, speed=18)
+        boosted = engine.render_phonetics(phonetics, speed=18, unit_compression=50)
+        self.assertLess(boosted.frame_count, ordinary.frame_count)
+
+    def test_correlated_compression_preserves_edges_and_duration(self):
+        samples = [((index % 20) - 10) * 1000 for index in range(240)]
+        compressed = _compress_unit_correlated(samples, 40, 15)
+        self.assertLess(len(compressed), len(samples))
+        self.assertEqual(samples[:15], compressed[:15])
+        self.assertEqual(samples[-15:], compressed[-15:])
+
+        engine = MonologEngine(ROOT / "monologue16" / "FB_22K16.DLL", ROOT / "monologue16" / "FB_DEFLT.DIC")
+        phonetics = engine.text_to_phonetics("files reports awards and menus")
+        ordinary = engine.render_phonetics(phonetics, speed=18)
+        aligned = engine.render_phonetics(
+            phonetics, speed=18, unit_compression=50,
+            compression_method="correlation",
+        )
+        self.assertLess(aligned.frame_count, ordinary.frame_count)
+
+    def test_pause_compression_shortens_only_delays(self):
+        engine = MonologEngine(ROOT / "monologue16" / "FB_22K16.DLL", ROOT / "monologue16" / "FB_DEFLT.DIC")
+        phonetics = "hEHlOWD5"
+        ordinary = engine.render_phonetics(phonetics, speed=13)
+        shortened = engine.render_phonetics(phonetics, speed=13, pause_compression=75)
+        self.assertLess(shortened.frame_count, ordinary.frame_count)
         shortened = _resize_unit(list(range(100)), -40, 2)
         self.assertEqual(len(shortened), 80)
         self.assertEqual(shortened[0], 0)
@@ -188,6 +235,17 @@ class EngineTests(unittest.TestCase):
         original = engine.text_to_phonetics("unicode")
         unicode_phonetics = engine.text_to_phonetics("unicode", use_community_dictionary=True)
         self.assertNotEqual(original, unicode_phonetics)
+        corrected = {
+            word: engine.text_to_phonetics(word, use_community_dictionary=True)
+            for word in ("long", "pause", "because", "sentence", "short", "north", "order")
+        }
+        self.assertTrue(corrected["long"].startswith("l'AANG"))
+        self.assertTrue(corrected["pause"].startswith("p'AAz"))
+        self.assertTrue(corrected["because"].startswith("bIHk'AAz"))
+        self.assertTrue(corrected["sentence"].startswith("s'EHntIXns"))
+        self.assertTrue(corrected["short"].startswith("SH'OWrt"))
+        self.assertTrue(corrected["north"].startswith("n'OWrTH"))
+        self.assertTrue(corrected["order"].startswith("'OWrdER"))
         self.assertIn("y'UWnIXk\"OWd", unicode_phonetics)
         # Uppercase acronym expansions must not capture ordinary lowercase
         # words such as the community dictionary's special WITH entry.
@@ -202,8 +260,8 @@ class EngineTests(unittest.TestCase):
         for word, expected in {
             "tidy": "t'AYdIY",
             "menu": "m'EHnyUW",
-            "undergone": '"AHndERg\'OWn',
-            "etiquette": "'EHtAXkAXt",
+            "undergone": '"AHndERg\'AAn',
+            "etiquette": "'EHtIXkIXt",
             "intrigue": '"IHntr\'IYg',
         }.items():
             with self.subTest(cmu_word=word):

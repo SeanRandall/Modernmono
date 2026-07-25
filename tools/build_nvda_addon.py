@@ -7,7 +7,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "addon"
-OUTPUT = ROOT / "dist" / "modernMono-0.6.8.nvda-addon"
+OUTPUT = ROOT / "dist" / "modernMono-0.6.12.nvda-addon"
 
 
 def main() -> None:

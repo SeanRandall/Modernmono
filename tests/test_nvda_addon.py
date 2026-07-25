@@ -112,11 +112,17 @@ class NvdaAddonTests(unittest.TestCase):
         sys.modules["logHandler"] = types.SimpleNamespace(log=types.SimpleNamespace(exception=lambda *args: None))
         driverSettings = types.ModuleType("autoSettingsUtils.driverSetting")
         driverSettings.BooleanDriverSetting = lambda *args, **kwargs: (args, kwargs)
+        driverSettings.DriverSetting = lambda *args, **kwargs: (args, kwargs)
         driverSettings.NumericDriverSetting = lambda *args, **kwargs: (args, kwargs)
+        settingsUtils = types.ModuleType("autoSettingsUtils.utils")
+        settingsUtils.StringParameterInfo = lambda identifier, name: types.SimpleNamespace(
+            id=identifier, name=name
+        )
         autoSettings = types.ModuleType("autoSettingsUtils")
         autoSettings.driverSetting = driverSettings
         sys.modules["autoSettingsUtils"] = autoSettings
         sys.modules["autoSettingsUtils.driverSetting"] = driverSettings
+        sys.modules["autoSettingsUtils.utils"] = settingsUtils
 
         synthPackage = types.ModuleType("synthDrivers")
         synthPackage.__path__ = [str(ROOT / "addon" / "synthDrivers")]
@@ -156,13 +162,31 @@ class NvdaAddonTests(unittest.TestCase):
     def test_ascii_normalization_and_rate_boost(self):
         driver = self.driverModule.SynthDriver()
         try:
+            self.assertEqual(
+                set(driver._rateBoostModes), set(driver._get_availableRateboostmodes())
+            )
+            self.assertTrue({"clear", "maximum", "phaseAligned"}.isdisjoint(
+                driver._rateBoostModes
+            ))
             self.assertEqual("wasn't deja vu - ok...", driver._normalizeAscii("wasn’t déjà vu — ok…"))
-            self.assertEqual(9, driver._monologRate(100))
-            driver._rateBoost = True
-            self.assertEqual(24, driver._monologRate(100))
-            self.assertEqual(18, driver._monologRate(75))
-            self.assertEqual(12, driver._monologRate(50))
-            driver._legacyRateBoost = True
+            self.assertEqual((9, 0), driver._rateProfile(100))
+            driver._rateBoostMode = "cleanReading"
+            self.assertEqual((13, 0), driver._rateProfile(100))
+            self.assertEqual(75, driver._pauseCompression(100))
+            driver._rateBoostMode = "wsolaBalanced"
+            self.assertEqual((13, 0), driver._rateProfile(100))
+            self.assertEqual((2.0, 36, 0.5, 10), driver._wsolaProfile(100))
+            self.assertEqual((1.0, 36, 0.5, 10), driver._wsolaProfile(40))
+            self.assertEqual(50, driver._pauseCompression(100))
+            original16 = bytes(range(256)) * 80
+            wsola16 = driver._compressPcmWsola(original16, 1.7, 36, 0.5, 10)
+            self.assertLess(len(wsola16), len(original16))
+            original8 = bytes(range(256)) * 40
+            wsola8 = driver._compressPcmWsola(original8, 1.7, 36, 0.5, 10, 1, 11025)
+            self.assertLess(len(wsola8), len(original8))
+            driver._rateBoostMode = "wholeUnits"
+            self.assertEqual((24, 0), driver._rateProfile(100))
+            driver._rateBoostMode = "legacyOverlap"
             self.assertEqual(13, driver._renderRate(100))
             original = bytes(range(256)) * 40
             self.assertLess(len(driver._compressPcm(original, 2.5)), len(original) * 0.55)
