@@ -1,89 +1,119 @@
-# ModernMono
+# Modern Mono
 
-Reverse-engineering workspace for a native reimplementation of the Monolog
-Win16 speech synthesizer.
+Modern Mono brings the classic Monolog speech synthesizer to current versions
+of NVDA. It is intended for people who enjoy compact, responsive speech and
+for long-time screen-reader users who remember the sound of older synthesizers.
 
-The original binaries remain in `monologue16/`. Generated inventories and
-decoded artifacts are written under `analysis/`; reproducible parsers live in
-`tools/`.
+The add-on runs locally and includes both the cleaner 22 kHz voice and the
+lower-fidelity 11 kHz voice. No old Windows installation or speech hardware is
+required.
 
-## Current executable milestone
+## Download and install
 
-The tooling can now:
+**[Download the latest Modern Mono release](https://github.com/SeanRandall/Modernmono/releases/latest)**
 
-- parse NE headers and extract resources without running Win16 code;
-- decode all 891 entries in `FB_DEFLT.DIC`;
-- parse the phonetic command language accepted by `FB_NGN`;
-- decode both voices' metadata, transition matrices, and `INST` unit records;
-- resolve every synthesis unit to its precise `PCMD` byte range;
-- pronounce words missing from the dictionary with the original `HASH`/`RULE`
-  spelling rules;
-- produce a diagnostic WAV from the raw units selected for a phonetic string.
+Download the `.nvda-addon` file from the release, open it, approve the NVDA
+installation prompt, and restart NVDA when requested. Select **Modern Mono**
+from NVDA's speech synthesizer settings.
 
-Run the tests:
+## What it offers
+
+- Two Monolog voices: 22 kHz/16-bit and the more traditional 11 kHz/8-bit sound.
+- The original Monolog dictionary and pronunciation rules.
+- An optional community American-English dictionary for broader vocabulary.
+- A separate user dictionary under NVDA's Speech dictionaries preferences,
+  including a preview button for hearing phonetic entries.
+- Several optional rate-boost experiments, ranging from original-style timing
+  to whole-utterance WSOLA compression and shortened punctuation pauses.
+- Adjustable pitch, volume and excitation (sentence-level pitch movement).
+- Optional backtick commands for changing pitch, speed, volume and delay inside
+  text.
+
+All additional dictionaries and rate-boost modes are **off by default**. A new
+installation therefore starts with the closest available behaviour to ordinary
+Monolog, and each experiment can be enabled separately from NVDA's voice
+settings.
+
+## Rate boost choices
+
+Different listeners value speed, clarity and the original sound differently,
+so the current add-on deliberately provides several choices:
+
+- **Off:** original Monolog 0–9 timing.
+- **Clean reading:** extends the recovered timing only to its safe limit and
+  progressively shortens punctuation pauses.
+- **WSOLA crisp, balanced and smooth:** compress complete rendered speech with
+  different window sizes rather than cutting individual speech units.
+- **WSOLA maximum speed:** the strongest whole-utterance compression profile.
+- **WSOLA balanced + shorter pauses:** combines balanced compression with more
+  aggressive pause reduction.
+- **Previous whole-unit boost:** retains the earlier pitch-stable experiment.
+- **Legacy overlap/add:** retains the faster behaviour from early builds.
+
+These modes are experimental. The best choice is whichever remains most
+understandable with your voice, pitch and usual NVDA reading rate.
+
+## Dictionaries
+
+The community dictionary is optional because it changes the pronunciation of
+many words. Modern Mono first respects its native dictionary, then uses
+converted community and CMU pronunciations where appropriate. Recent mapping
+work improves reduced vowels and words such as “long,” “pause,” “because,”
+“sentence” and “short.”
+
+Personal corrections can be added through **NVDA Preferences → Speech
+dictionaries → Modern Mono user dictionary** without modifying the bundled
+files.
+
+## Technical background
+
+Modern Mono is a native Python reconstruction of the Monolog Win16 speech
+engine. It does not run the original Win16 program. The project parses the old
+NE resources, dictionary, spelling rules, phonetic command language, transition
+matrices and recorded synthesis units, then schedules those units directly for
+NVDA.
+
+The recovered renderer currently includes:
+
+- all 891 original dictionary entries;
+- the original `HASH`/`RULE` pronunciation fallback;
+- 22 kHz/16-bit and 11 kHz/8-bit unit data;
+- duration, pitch-period and repetition scheduling;
+- boundary interpolation and crossfades;
+- stress, punctuation and sentence-intonation contours;
+- number, date, currency, abbreviation and symbol handling;
+- optional excitation scaling and several rate experiments.
+
+Deeper reverse-engineering notes are in
+[`analysis/ENGINE_MAP.md`](analysis/ENGINE_MAP.md) and
+[`analysis/PYTHON_NVDA_PLAN.md`](analysis/PYTHON_NVDA_PLAN.md).
+
+## Testing and development
+
+Run the complete automated test suite:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-Render a diagnostic 22 kHz unit sequence:
+Render ordinary text to a WAV file:
 
 ```powershell
-python tools\render_units.py monologue16\FB_22K16.DLL "hEHl'OW" analysis\voice\hello_raw_units.wav
+python tools\render_text.py "absence, actually another dictionary." output.wav
 ```
 
-Render with the recovered default scheduler and boundary interpolation:
+Render a raw phonetic sequence using the recovered scheduler:
 
 ```powershell
-python tools\render_units.py monologue16\FB_22K16.DLL "hEHl'OW" analysis\voice\hello_scheduled.wav --mode scheduled
+python tools\render_units.py monologue16\FB_22K16.DLL "hEHl'OW" output.wav --mode scheduled
 ```
 
-External pitch and speed settings use the original 0–9 range:
-
-```powershell
-python tools\render_units.py monologue16\FB_22K16.DLL "hEHl'OW" output.wav --mode scheduled --pitch 5 --speed 5
-```
-
-Render the standard dictionary comparison corpus:
-
-```powershell
-python tools\render_corpus.py monologue16\FB_22K16.DLL monologue16\FB_DEFLT.DIC analysis\corpus\22k
-```
-
-Render continuous dictionary-backed text:
-
-```powershell
-python tools\render_text.py "absence, actually another dictionary." analysis\voice\phrase.wav
-```
-
-Or type and hear lines interactively on Windows:
+Or use the interactive Windows console:
 
 ```powershell
 python tools\console_speak.py
 ```
 
-The console accepts inline phonetic commands in double brackets, for example
-`Hello [[P8]]world`, `fast [[S3]]slow`, or `wait [[D2]]then continue`.
-Ordinary punctuation is interpreted automatically: statements fall, questions
-rise, exclamations receive an emphatic fall, and commas, semicolons, colons,
-parentheses, quotes, and ellipses insert their recovered pauses. Symbols and
-comparison operators including `#`, `%`, `&`, `*`, `@`, `^`, `=`, `<`, `<=`,
-`<>`, `>`, `>=`, and `:=` are spoken rather than discarded.
-
-The recovered text front end also expands integers, years, ordinals, decimals,
-currency and numeric dates; recognizes supplied abbreviations; spells short
-vowelless tokens such as `cm`; and accepts scoped original controls such as
-`<<P8 higher text>>` and raw phonetics such as `<<~hEHl'OW>>`. Use `/spell` in
-the console for character-by-character speech.
-
-Words absent from `FB_DEFLT.DIC` now fall back to the original `RULE`/`HASH`
-resources embedded in the selected voice. Tokens outside that rule system
-(for example mixed alphanumeric identifiers) are still reported explicitly.
-See [`analysis/PYTHON_NVDA_PLAN.md`](analysis/PYTHON_NVDA_PLAN.md).
-
-The scheduled mode ports unit resizing, pitch-period/repeat scheduling, tail
-crossfades, voiced-boundary interpolation, and per-unit stress and intonation
-contours. Exact interactions between overlapping stress, sentence intonation,
-speed, pitch, and the optional excitation scaling are still being refined.
-
-See [`analysis/ENGINE_MAP.md`](analysis/ENGINE_MAP.md) for the recovered model.
+The diagnostic tools expose the original 0–9 pitch and speed ranges and are
+primarily intended for engine investigation. The NVDA add-on provides the
+normal 0–100 controls and the additional user-facing settings described above.
