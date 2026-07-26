@@ -20,14 +20,19 @@ code { font-family: monospace; }
 
 <h2>Voice settings</h2>
 <ul>
-<li><strong>Voice:</strong> chooses the cleaner 22 kHz/16-bit voice or the original lower-fidelity 11 kHz/8-bit voice.</li>
+<li><strong>Voice:</strong> chooses the cleaner 22 kHz/16-bit voice, the original lower-fidelity 11 kHz/8-bit voice, the fast-reading variants, or the DoubleTalk-inspired Precise Pete, Vader, Big Bob and Ricochet Randy abstractions.</li>
 <li><strong>Rate boost mode:</strong> Off uses the original Monolog 0–9 range. <em>Previous whole-unit</em> retains the 0.6.8 mode, and <em>Legacy overlap/add</em> retains the faster boost from builds through 0.5.6.</li>
 <li><strong>Additional reading-speed experiments:</strong> <em>Clean reading</em> stops at the original S13 extension and progressively shortens pauses. The WSOLA variants also stop at S13, shorten punctuation pauses as the rate rises, then compress the complete rendered utterance using correlation-aligned windows: Crisp favours short consonant detail, Smooth favours continuity, Balanced sits between them, Maximum uses the strongest curve, and Balanced + shorter pauses applies the strongest pause reduction.</li>
 <li><strong>Excitation:</strong> controls sentence-level pitch movement. 50 preserves the native contours, 0 flattens them and 100 doubles their excursion.</li>
 <li><strong>Enable embedded setting commands:</strong> permits backtick pitch, speed, volume and delay commands.</li>
 <li><strong>Enable ASCII normalization:</strong> converts smart punctuation, Unicode dashes and accented Latin letters before pronunciation. It is enabled by default.</li>
 <li><strong>Use community American English dictionary:</strong> enables converted pronunciation corrections, abbreviation expansions and CMUdict fallback pronunciations. Leave this disabled for the most authentic original Monolog behaviour. Native Monolog entries retain priority.</li>
+<li><strong>Articulation:</strong> varies transient definition from smoother to more sharply articulated speech.</li>
+<li><strong>Formant frequency:</strong> varies the apparent vocal-tract colour from darker to brighter.</li>
+<li><strong>Tone:</strong> selects bass, normal or treble treatment.</li>
+<li><strong>Reverb:</strong> adds a short voice echo based on the corresponding DoubleTalk control.</li>
 </ul>
+<p>Selecting a DoubleTalk-inspired voice loads its recovered parameter defaults. The controls remain independently adjustable afterwards. These voices and controls are abstractions inspired by the DoubleTalk system, not direct copies of its program, dictionary or waveform data.</p>
 
 <h2>Commands in NVDA text</h2>
 <p>Enable embedded setting commands before using these forms. The command remains active until another command changes the same setting.</p>

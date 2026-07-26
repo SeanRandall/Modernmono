@@ -64,6 +64,19 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		NumericDriverSetting(
 			"excitation", "E&xcitation", defaultVal=50, availableInSettingsRing=True
 		),
+		NumericDriverSetting(
+			"articulation", "&Articulation", defaultVal=50, availableInSettingsRing=True
+		),
+		NumericDriverSetting(
+			"formantFrequency", "&Formant frequency", defaultVal=50,
+			availableInSettingsRing=True,
+		),
+		DriverSetting(
+			"tone", "T&one", defaultVal="normal", availableInSettingsRing=True,
+		),
+		NumericDriverSetting(
+			"reverb", "Re&verb", defaultVal=0, availableInSettingsRing=True
+		),
 		synthDriverHandler.SynthDriver.VolumeSetting(),
 		BooleanDriverSetting(
 			"embeddedCommands",
@@ -119,6 +132,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self._rateBoostMode = "off"
 		self._pitch = 50
 		self._excitation = 50
+		self._articulation = 50
+		self._formantFrequency = 50
+		self._tone = "normal"
+		self._reverb = 0
 		self._volume = 100
 		self._embeddedCommands = False
 		self._asciiNormalization = True
@@ -181,6 +198,24 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		return {
 			"22k16": synthDriverHandler.VoiceInfo("22k16", "Monolog 22 kHz (16-bit)"),
 			"11k8": synthDriverHandler.VoiceInfo("11k8", "Monolog 11 kHz (8-bit)"),
+			"doubletalk22k16": synthDriverHandler.VoiceInfo(
+				"doubletalk22k16", "Monolog DT Fast 22 kHz (expanded dictionary)"
+			),
+			"doubletalk11k8": synthDriverHandler.VoiceInfo(
+				"doubletalk11k8", "Monolog DT Fast 11 kHz (expanded dictionary)"
+			),
+			"precisePete22k16": synthDriverHandler.VoiceInfo(
+				"precisePete22k16", "Precise Pete (DoubleTalk preset, 22 kHz)"
+			),
+			"doubleTalkVader22k16": synthDriverHandler.VoiceInfo(
+				"doubleTalkVader22k16", "Vader (DoubleTalk preset, 22 kHz)"
+			),
+			"doubleTalkBigBob22k16": synthDriverHandler.VoiceInfo(
+				"doubleTalkBigBob22k16", "Big Bob (DoubleTalk preset, 22 kHz)"
+			),
+			"doubleTalkRandy22k16": synthDriverHandler.VoiceInfo(
+				"doubleTalkRandy22k16", "Ricochet Randy (DoubleTalk preset, 22 kHz)"
+			),
 		}
 
 	def _get_voice(self):
@@ -188,7 +223,20 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _set_voice(self, value):
 		value = str(value)
-		voices = {"22k16": "FB_22K16.DLL", "11k8": "FB_11K8.DLL"}
+		# The DT Fast variants deliberately reuse the bundled Monolog acoustic
+		# resources.  DoubleTalk's ROM is a research oracle, not distributable
+		# voice data; the variants only select independently implemented timing
+		# and dictionary policies inspired by the shared First Byte architecture.
+		voices = {
+			"22k16": "FB_22K16.DLL",
+			"11k8": "FB_11K8.DLL",
+			"doubletalk22k16": "FB_22K16.DLL",
+			"doubletalk11k8": "FB_11K8.DLL",
+			"precisePete22k16": "FB_22K16.DLL",
+			"doubleTalkVader22k16": "FB_22K16.DLL",
+			"doubleTalkBigBob22k16": "FB_22K16.DLL",
+			"doubleTalkRandy22k16": "FB_22K16.DLL",
+		}
 		if value not in voices or value == self._voice:
 			return
 		self.cancel()
@@ -200,6 +248,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			self._root / "data" / "CMUdict.tsv",
 		)
 		self._voice = value
+		self._applyVoiceDefaults()
 		self._activePlayer = self._playerForRate(self._rate)
 
 	def _set_rate(self, value):
@@ -253,6 +302,40 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _set_excitation(self, value):
 		self._excitation = max(0, min(100, int(value)))
 
+	def _get_articulation(self):
+		return self._articulation
+
+	def _set_articulation(self, value):
+		self._articulation = max(0, min(100, int(value)))
+
+	def _get_formantFrequency(self):
+		return self._formantFrequency
+
+	def _set_formantFrequency(self, value):
+		self._formantFrequency = max(0, min(100, int(value)))
+
+	_tones = {
+		"bass": StringParameterInfo("bass", "Bass"),
+		"normal": StringParameterInfo("normal", "Normal"),
+		"treble": StringParameterInfo("treble", "Treble"),
+	}
+
+	def _get_availableTones(self):
+		return self._tones
+
+	def _get_tone(self):
+		return self._tone
+
+	def _set_tone(self, value):
+		if value in self._tones:
+			self._tone = value
+
+	def _get_reverb(self):
+		return self._reverb
+
+	def _set_reverb(self, value):
+		self._reverb = max(0, min(100, int(value)))
+
 	def _get_volume(self):
 		return self._volume
 
@@ -284,6 +367,15 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _rateProfile(self, value: int) -> tuple[int, int]:
 		"""Return native scheduling speed and protected-unit compression percent."""
 		value = max(0, min(100, value))
+		if self._isDoubleTalkVariant():
+			# The patent describes manipulating compact voice-period segments while
+			# retaining their significant edges.  Drive the recovered scheduler to
+			# its verified S13 limit, then shorten only the protected centre of each
+			# unit.  The correlation splice used at render time keeps transitions
+			# stable at high reading rates.
+			nativeSpeed = round(value * 13 / 100)
+			unitCompression = round(max(0, value - 35) * 48 / 65)
+			return nativeSpeed, unitCompression
 		if self._rateBoostMode == "off":
 			return round(value * 9 / 100), 0
 		if self._rateBoostMode in {
@@ -301,6 +393,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		return self._rateProfile(value)[0]
 
 	def _pauseCompression(self, value: int) -> int:
+		if self._isDoubleTalkVariant():
+			# Preserve some punctuation at ordinary rates, but make long pauses stop
+			# dominating the cadence as the reading rate rises.
+			return round(max(0, min(100, value)) * 82 / 100)
 		if self._rateBoostMode in {"cleanReading", "wsolaReading"}:
 			return round(max(0, min(100, value)) * 75 / 100)
 		if self._rateBoostMode in {
@@ -311,6 +407,11 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _wsolaProfile(self, value: int):
 		"""Return factor, window ms, overlap fraction and search ms."""
+		if self._isDoubleTalkVariant():
+			# Unit scheduling supplies the first speed increase.  Add a conservative,
+			# short-window utterance compressor above 50% for very fast reading.
+			amount = max(0, min(50, value - 50)) / 50.0
+			return 1.0 + 0.9 * amount, 24, 0.40, 7
 		profiles = {
 			"wsolaCrisp": (0.65, 24, 0.35, 6),
 			"wsolaBalanced": (1.0, 36, 0.50, 10),
@@ -337,6 +438,168 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			self._players[key] = player
 		return player
 
+	def _isDoubleTalkVariant(self) -> bool:
+		return self._voice.startswith("doubletalk")
+
+	def _isPrecisePete(self) -> bool:
+		return self._voice == "precisePete22k16"
+
+	_doubleTalkPresets = {
+		# Exact ROM rows at 0x1A33: P, E, F, X, A, R.
+		"doubleTalkVader22k16": (30, 7, 5, 1, 4, 2),
+		"doubleTalkBigBob22k16": (40, 6, 1, 0, 4, 0),
+		"precisePete22k16": (60, 4, 6, 2, 8, 0),
+		"doubleTalkRandy22k16": (40, 5, 2, 1, 5, 6),
+	}
+
+	def _doubleTalkPreset(self):
+		return self._doubleTalkPresets.get(self._voice)
+
+	def _applyVoiceDefaults(self) -> None:
+		preset = self._doubleTalkPreset()
+		if preset is None:
+			pitch, expression, formant, tone, articulation, reverb = (50, 5, 5, 1, 5, 0)
+		else:
+			pitch, expression, formant, tone, articulation, reverb = preset
+		self._pitch = pitch
+		self._excitation = expression * 10
+		self._formantFrequency = round(formant * 100 / 9)
+		self._tone = ("bass", "normal", "treble")[tone]
+		self._articulation = round(articulation * 100 / 9)
+		self._reverb = round(reverb * 100 / 9)
+
+	def _useExpandedDictionary(self) -> bool:
+		"""DT Fast favours coverage; ordinary voices retain the opt-in switch."""
+		return (
+			self._communityDictionary or self._isDoubleTalkVariant()
+			or self._doubleTalkPreset() is not None
+		)
+
+	def _renderPitch(self, value: int) -> int:
+		return self._monologSetting(value)
+
+	def _renderExcitation(self) -> int:
+		return self._excitation
+
+	@staticmethod
+	def _applyPrecisePeteTone(pcm: bytes, sampleWidth: int) -> bytes:
+		"""Approximate Pete's F6/X2 bright response without importing ROM audio.
+
+		A mild pre-emphasis models the treble preset.  Peak normalization makes
+		the filter incapable of introducing the clipping heard in aggressive
+		rate-compression experiments.
+		"""
+		if not pcm:
+			return pcm
+		if sampleWidth == 2:
+			samples = list(struct.unpack(f"<{len(pcm) // 2}h", pcm))
+			limit = 32767
+		else:
+			samples = [value - 0x80 for value in pcm]
+			limit = 127
+		originalPeak = max(1, max(abs(value) for value in samples))
+		filtered = []
+		previous = samples[0]
+		for value in samples:
+			filtered.append(value + (value - previous) * 3 // 16)
+			previous = value
+		filteredPeak = max(1, max(abs(value) for value in filtered))
+		targetPeak = min(limit, originalPeak)
+		if filteredPeak > targetPeak:
+			filtered = [value * targetPeak // filteredPeak for value in filtered]
+		if sampleWidth == 2:
+			return struct.pack(f"<{len(filtered)}h", *filtered)
+		return bytes(max(0, min(255, value + 0x80)) for value in filtered)
+
+	@staticmethod
+	def _applyDoubleTalkColour(
+			pcm: bytes, sampleWidth: int, sampleRate: int,
+			formant: int, tone: int, articulation: int, reverb: int,
+	) -> bytes:
+		"""Map DoubleTalk F/X/R presets to bounded time-domain treatments."""
+		if not pcm:
+			return pcm
+		if sampleWidth == 2:
+			samples = list(struct.unpack(f"<{len(pcm) // 2}h", pcm))
+			limit = 32767
+		else:
+			samples = [value - 0x80 for value in pcm]
+			limit = 127
+		originalPeak = max(1, max(abs(value) for value in samples))
+
+		# Lower F values darken the voice, but retain most of the dry signal so
+		# consonants remain useful for fast screen-reader speech.  Earlier builds
+		# cascaded low-pass stages here, which made Bob and Randy too muffled.
+		if formant < 5:
+			dry = samples
+			previous = dry[0]
+			smoothed = []
+			for value in dry:
+				previous = (previous + value) // 2
+				smoothed.append(previous)
+			darkness = min(4, 5 - formant)
+			samples = [
+				(value * (10 - darkness) + low * darkness) // 10
+				for value, low in zip(dry, smoothed)
+			]
+		elif formant > 5 or tone == 2:
+			previous = samples[0]
+			amount = 3 if tone == 2 else 1
+			filtered = []
+			for value in samples:
+				filtered.append(value + (value - previous) * amount // 16)
+				previous = value
+			samples = filtered
+
+		# Bass tone adds only a small wet component; F1 already supplies Bob's
+		# darker identity and should not erase stop/fricative transients.
+		if tone == 0:
+			previous = samples[0]
+			for index, value in enumerate(tuple(samples)):
+				previous = (previous + value) // 2
+				samples[index] = (value * 7 + previous) // 8
+
+		# Articulation is a restrained transient control.  High settings add a
+		# little edge energy; low settings blend toward a one-sample smoother.
+		if articulation != 5:
+			dry = tuple(samples)
+			previous = dry[0]
+			if articulation > 5:
+				amount = articulation - 5
+				for index, value in enumerate(dry):
+					samples[index] = value + (value - previous) * amount // 24
+					previous = value
+			else:
+				amount = 5 - articulation
+				for index, value in enumerate(dry):
+					previous = (previous + value) // 2
+					samples[index] = (value * (8 - amount) + previous * amount) // 8
+
+		if reverb:
+			delay = max(1, round(sampleRate * (18 + reverb * 4) / 1000))
+			wet = min(5, 1 + reverb // 2)
+			for index in range(delay, len(samples)):
+				samples[index] += samples[index - delay] * wet // 16
+
+		peak = max(1, max(abs(value) for value in samples))
+		targetPeak = min(limit, originalPeak)
+		if peak > targetPeak:
+			samples = [value * targetPeak // peak for value in samples]
+		if sampleWidth == 2:
+			return struct.pack(f"<{len(samples)}h", *samples)
+		return bytes(max(0, min(255, value + 0x80)) for value in samples)
+
+	def _applyDoubleTalkPreset(self, pcm: bytes, sampleWidth: int, sampleRate: int) -> bytes:
+		formant = round(self._formantFrequency * 9 / 100)
+		tone = {"bass": 0, "normal": 1, "treble": 2}[self._tone]
+		articulation = round(self._articulation * 9 / 100)
+		reverb = round(self._reverb * 9 / 100)
+		if (formant, tone, articulation, reverb) == (5, 1, 5, 0):
+			return pcm
+		return self._applyDoubleTalkColour(
+			pcm, sampleWidth, sampleRate, formant, tone, articulation, reverb
+		)
+
 	@staticmethod
 	def _monologSetting(value: int) -> int:
 		return max(0, min(9, round(value * 9 / 100)))
@@ -359,7 +622,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			return False
 		if characterMode:
 			phonetics = self._engine.spell_to_phonetics(
-				text, use_community_dictionary=self._communityDictionary
+				text, use_community_dictionary=self._useExpandedDictionary()
 			)
 		else:
 			phonetics = self._textToPhonetics(text)
@@ -372,10 +635,13 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		renderRate, unitCompression = self._rateProfile(rate)
 		audio = self._engine.render_phonetics(
 			f"V{min(5, self._monologSetting(volume))}{phonetics}",
-			pitch=self._monologSetting(pitch),
+			pitch=self._renderPitch(pitch),
 			speed=renderRate,
-			excitation=self._excitation,
+			excitation=self._renderExcitation(),
 			unit_compression=unitCompression,
+			compression_method=(
+				"correlation" if self._isDoubleTalkVariant() else "centre"
+			),
 			pause_compression=self._pauseCompression(rate),
 		)
 		pcm = audio.pcm
@@ -388,6 +654,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			pcm = self._compressPcm(
 				pcm, 1.0 + 1.5 * rate / 100.0, audio.sample_width, audio.sample_rate
 			)
+		pcm = self._applyDoubleTalkPreset(pcm, audio.sample_width, audio.sample_rate)
 		if not self._isCurrent(generation):
 			return False
 		player = self._playerForRate(rate)
@@ -487,10 +754,13 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		renderRate, unitCompression = self._rateProfile(self._rate)
 		audio = self._engine.render_phonetics(
 			phonetics,
-			pitch=self._monologSetting(self._pitch),
+			pitch=self._renderPitch(self._pitch),
 			speed=renderRate,
-			excitation=self._excitation,
+			excitation=self._renderExcitation(),
 			unit_compression=unitCompression,
+			compression_method=(
+				"correlation" if self._isDoubleTalkVariant() else "centre"
+			),
 			pause_compression=self._pauseCompression(self._rate),
 		)
 		pcm = audio.pcm
@@ -504,6 +774,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				pcm, 1.0 + 1.5 * self._rate / 100.0,
 				audio.sample_width, audio.sample_rate,
 			)
+		pcm = self._applyDoubleTalkPreset(pcm, audio.sample_width, audio.sample_rate)
 		player = self._playerForRate(self._rate)
 		player.stop()
 		player.setVolume(all=self._volume / 100.0)
@@ -531,7 +802,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			)
 		if "[[" not in text:
 			return self._engine.text_to_phonetics(
-				text, use_community_dictionary=self._communityDictionary
+				text, use_community_dictionary=self._useExpandedDictionary()
 			)
 
 		pieces = []
@@ -540,7 +811,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			ordinary = text[offset:match.start()]
 			if ordinary.strip():
 				pieces.append(self._engine.text_to_phonetics(
-					ordinary, use_community_dictionary=self._communityDictionary
+					ordinary, use_community_dictionary=self._useExpandedDictionary()
 				))
 			raw = match.group(1).strip()
 			if raw:
@@ -550,7 +821,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		ordinary = text[offset:]
 		if ordinary.strip():
 			pieces.append(self._engine.text_to_phonetics(
-				ordinary, use_community_dictionary=self._communityDictionary
+				ordinary, use_community_dictionary=self._useExpandedDictionary()
 			))
 		return "|".join(pieces)
 

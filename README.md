@@ -19,6 +19,9 @@ from NVDA's speech synthesizer settings.
 ## What it offers
 
 - Two Monolog voices: 22 kHz/16-bit and the more traditional 11 kHz/8-bit sound.
+- Two opt-in **Monolog DT Fast** variants which retain those acoustic voices but
+  use faster, DoubleTalk-inspired period/unit scheduling, stronger pause
+  shortening and the expanded community/CMU pronunciation path by default.
 - The original Monolog dictionary and pronunciation rules.
 - An optional community American-English dictionary for broader vocabulary.
 - A separate user dictionary under NVDA's Speech dictionaries preferences,
@@ -33,6 +36,33 @@ All additional dictionaries and rate-boost modes are **off by default**. A new
 installation therefore starts with the closest available behaviour to ordinary
 Monolog, and each experiment can be enabled separately from NVDA's voice
 settings.
+
+Selecting a **DT Fast** voice is itself an opt-in: it automatically enables the
+expanded pronunciation path for that voice and applies a fast-reading profile,
+without changing the settings or output of either ordinary Monolog voice. The
+DoubleTalk ROM is not included and no ROM speech, dictionary, or program data is
+copied into the add-on.
+
+The **Precise Pete** voice is a separate DoubleTalk-preset reconstruction. ROM
+voice 3 is a parameter preset rather than another acoustic sample bank: it uses
+pitch 60, expression 4, formant setting 6, treble tone, articulation 8 and no
+reverb. Modern Mono maps the compatible controls onto its 22 kHz voice and uses
+a peak-normalized treble treatment; unsupported controls are not faked by
+copying ROM code or waveform data.
+
+The same ROM also provides parameter rows for **Vader**, **Big Bob** and
+**Ricochet Randy**. These are exposed as additional 22 kHz voices. Their exact
+pitch/expression settings are applied directly; formant, tone and reverb values
+are represented by bounded, peak-normalized time-domain treatments. The ROM's
+Perfect Paul row is the neutral baseline and therefore remains the ordinary
+Monolog voice rather than appearing as a duplicate.
+
+DoubleTalk's main voice-shaping parameters are available in NVDA's synthesizer
+settings and settings ring: **articulation**, **formant frequency**, **tone**
+(bass/normal/treble), **reverb**, pitch and excitation/expression. Selecting a
+ROM-derived voice loads its recovered defaults; every parameter can then be
+changed independently. Signal-shaping controls are peak bounded to avoid
+introducing amplitude clipping.
 
 ## Rate boost choices
 

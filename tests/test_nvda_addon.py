@@ -1,4 +1,5 @@
 import importlib.util
+import struct
 import sys
 import time
 import types
@@ -203,6 +204,87 @@ class NvdaAddonTests(unittest.TestCase):
             player = driver._playerForRate(50)
             self.assertEqual(11025, player.options["samplesPerSec"])
             self.assertEqual(8, player.options["bitsPerSample"])
+        finally:
+            driver.terminate()
+
+    def test_doubletalk_fast_variant_is_distinct_and_opt_in(self):
+        driver = self.driverModule.SynthDriver()
+        try:
+            voices = driver._getAvailableVoices()
+            self.assertIn("doubletalk22k16", voices)
+            self.assertIn("doubletalk11k8", voices)
+            ordinary = driver._textToPhonetics("unicode")
+            driver._set_voice("doubletalk22k16")
+            self.assertTrue(driver._isDoubleTalkVariant())
+            self.assertNotEqual(ordinary, driver._textToPhonetics("unicode"))
+            self.assertEqual((13, 48), driver._rateProfile(100))
+            self.assertEqual(82, driver._pauseCompression(100))
+            self.assertEqual((1.9, 24, 0.4, 7), driver._wsolaProfile(100))
+            driver._set_voice("22k16")
+            self.assertFalse(driver._isDoubleTalkVariant())
+            self.assertEqual((9, 0), driver._rateProfile(100))
+        finally:
+            driver.terminate()
+
+    def test_precise_pete_preset_is_bright_but_does_not_clip(self):
+        driver = self.driverModule.SynthDriver()
+        try:
+            self.assertIn("precisePete22k16", driver._getAvailableVoices())
+            driver._set_voice("precisePete22k16")
+            self.assertTrue(driver._isPrecisePete())
+            self.assertEqual(60, driver._get_pitch())
+            self.assertEqual(5, driver._renderPitch(driver._get_pitch()))
+            self.assertEqual(40, driver._renderExcitation())
+            self.assertEqual("treble", driver._get_tone())
+            self.assertEqual(8, round(driver._get_articulation() * 9 / 100))
+            self.assertEqual(6, round(driver._get_formantFrequency() * 9 / 100))
+            self.assertTrue(driver._useExpandedDictionary())
+            samples = (-32000, -12000, 18000, 32000, -30000) * 20
+            pcm = struct.pack(f"<{len(samples)}h", *samples)
+            bright = driver._applyPrecisePeteTone(pcm, 2)
+            values = struct.unpack(f"<{len(bright) // 2}h", bright)
+            self.assertLessEqual(max(abs(value) for value in values), 32000)
+            self.assertNotEqual(pcm, bright)
+        finally:
+            driver.terminate()
+
+    def test_other_doubletalk_rom_presets_are_available_and_bounded(self):
+        driver = self.driverModule.SynthDriver()
+        try:
+            voices = driver._getAvailableVoices()
+            expected = {
+                "doubleTalkVader22k16": (30, 7, 5, 1, 4, 2),
+                "doubleTalkBigBob22k16": (40, 6, 1, 0, 4, 0),
+                "doubleTalkRandy22k16": (40, 5, 2, 1, 5, 6),
+            }
+            samples = (-32000, -12000, 18000, 32000, -30000) * 500
+            pcm = struct.pack(f"<{len(samples)}h", *samples)
+            for voice, preset in expected.items():
+                with self.subTest(voice=voice):
+                    self.assertIn(voice, voices)
+                    driver._set_voice(voice)
+                    self.assertEqual(preset, driver._doubleTalkPreset())
+                    coloured = driver._applyDoubleTalkPreset(pcm, 2, 22050)
+                    values = struct.unpack(f"<{len(coloured) // 2}h", coloured)
+                    self.assertLessEqual(max(abs(value) for value in values), 32000)
+                    self.assertNotEqual(pcm, coloured)
+        finally:
+            driver.terminate()
+
+    def test_doubletalk_voice_controls_override_preset_defaults(self):
+        driver = self.driverModule.SynthDriver()
+        try:
+            driver._set_voice("doubleTalkBigBob22k16")
+            self.assertEqual("bass", driver._get_tone())
+            driver._set_formantFrequency(50)
+            driver._set_articulation(100)
+            driver._set_tone("treble")
+            driver._set_reverb(30)
+            self.assertEqual(50, driver._get_formantFrequency())
+            self.assertEqual(100, driver._get_articulation())
+            self.assertEqual("treble", driver._get_tone())
+            self.assertEqual(30, driver._get_reverb())
+            self.assertEqual(set(driver._tones), set(driver._get_availableTones()))
         finally:
             driver.terminate()
 
